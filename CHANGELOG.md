@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Update OpenSSH to 10.6p2.
 - Add a KernelSU and APatch WebUI for service control, authorized keys,
   common settings, and validated `sshd_config` editing.
 - Isolate SSH terminals with a private `devpts` instance.

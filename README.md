@@ -129,7 +129,7 @@ See [docs/WEBUI.md](docs/WEBUI.md) for the controller protocol and tests.
 
 ## Included software
 
-- [OpenSSH 10.5p1](https://www.openssh.com/)
+- [OpenSSH 10.6p2](https://www.openssh.com/)
 - [OpenSSL 3.6.4](https://www.openssl.org/)
 - [Rsync 3.5.0](https://rsync.samba.org/)
 - [Magisk Module Installer](https://github.com/topjohnwu/magisk-module-installer),

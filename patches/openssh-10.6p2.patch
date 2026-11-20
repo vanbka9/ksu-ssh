@@ -1,0 +1,1010 @@
+diff -urN a/Makefile.in b/Makefile.in
+--- a/Makefile.in	2026-11-20 00:27:49
++++ b/Makefile.in	2026-11-20 00:27:49
+@@ -108,20 +108,23 @@
+ 	kexgexc.o kexgexs.o kexmlkem768ecdh.o \
+ 	kexsntrup761x25519.o kexmlkem768x25519.o sntrup761.o kexgen.o \
+ 	sftp-realpath.o platform-pledge.o platform-tracing.o platform-misc.o \
+-	sshbuf-io.o misc-agent.o ssherr-libcrypto.o
++	sshbuf-io.o misc-agent.o ssherr-libcrypto.o \
++	android-tweaks.o
+ 
+ P11OBJS= ssh-pkcs11-client.o
+ 
+ SKOBJS=	ssh-sk-client.o
+ 
+ SSHOBJS= ssh.o readconf.o clientloop.o sshtty.o \
+-	sshconnect.o sshconnect2.o mux.o ssh-pkcs11.o $(SKOBJS)
++	sshconnect.o sshconnect2.o mux.o ssh-pkcs11.o $(SKOBJS) \
++	android-tweaks.o
+ 
+ SSHDOBJS=sshd.o \
+ 	platform-listen.o \
+ 	servconf.o srclimit.o groupaccess.o auth2-methods.o \
+ 	dns.o fatal.o compat.o utf8.o authfd.o canohost.o \
+-	$(P11OBJS) $(SKOBJS)
++	$(P11OBJS) $(SKOBJS) \
++	android-tweaks.o
+ 
+ SSHD_SESSION_OBJS=sshd-session.o auth-rhosts.o auth-passwd.o \
+ 	audit.o audit-bsm.o audit-linux.o platform.o \
+@@ -134,7 +137,8 @@
+ 	auth2-gss.o gss-serv.o gss-serv-krb5.o \
+ 	loginrec.o auth-pam.o auth-shadow.o auth-sia.o \
+ 	sftp-server.o sftp-common.o \
+-	uidswap.o platform-listen.o $(P11OBJS) $(SKOBJS)
++	uidswap.o platform-listen.o $(P11OBJS) $(SKOBJS) \
++	android-tweaks.o
+ 
+ SSHD_AUTH_OBJS=sshd-auth.o \
+ 	auth2-methods.o \
+@@ -149,7 +153,8 @@
+ 	sandbox-null.o sandbox-rlimit.o sandbox-darwin.o \
+ 	sandbox-seccomp-filter.o sandbox-capsicum.o  sandbox-solaris.o \
+ 	sftp-server.o sftp-common.o \
+-	uidswap.o $(P11OBJS) $(SKOBJS)
++	uidswap.o $(P11OBJS) $(SKOBJS) \
++	android-tweaks.o
+ 
+ SFTP_CLIENT_OBJS=sftp-common.o sftp-client.o sftp-glob.o ssherr-nolibcrypto.o
+ 
+diff -urN a/android-tweaks.c b/android-tweaks.c
+--- a/android-tweaks.c	1970-01-01 03:00:00
++++ b/android-tweaks.c	2026-11-20 00:27:49
+@@ -0,0 +1,506 @@
++/* config.h may rename malloc, so it must precede stdlib.h. */
++#include "config.h"
++#include "android-tweaks.h"
++#include <stdlib.h>
++#include <limits.h>
++#include <stdio.h>
++#include <string.h>
++#ifdef WITH_OPENSSL
++#include <openssl/md5.h>
++#include <openssl/sha.h>
++#include <openssl/des.h>
++#endif
++
++//char *sshelper_user = NULL;
++
++//static struct passwd android_pass = { "", "", 0, 0, "", "" };
++
++/*
++ * This is a stand-in for getpwuid() on an Android system
++ * running without root authority, so the usual system call
++ * cannot be made. All references to getpwuid() must be
++ * redirected here.
++ *
++ */
++
++static char datadir_root[] = "/data/ssh/root/";
++static char datadir_shell[] = "/data/ssh/shell/";
++static int android_uid_tweak_isLoaded = 0;
++static uid_t android_uid_tweak_uidRoot=0;
++static uid_t android_uid_tweak_uidShell=2000;
++
++static void android_uid_tweak_load(void) {
++	struct passwd *pw;
++	if(android_uid_tweak_isLoaded)
++		return;
++	android_uid_tweak_isLoaded = 1;
++	pw = getpwnam("root");
++	if(pw != NULL)
++		android_uid_tweak_uidRoot = pw->pw_uid;
++	pw = getpwnam("shell");
++	if(pw != NULL)
++		android_uid_tweak_uidShell = pw->pw_uid;
++}
++
++static char* getUidDir(uid_t uid) {
++	if(uid == android_uid_tweak_uidRoot)
++		return datadir_root;
++	else if(uid == android_uid_tweak_uidShell)
++		return datadir_shell;
++	return NULL;
++}
++
++struct passwd* getpwuida(uid_t uid) {
++	char *new_dir;
++	struct passwd *pw;
++	android_uid_tweak_load();
++	pw = getpwuid(uid);
++	if(pw != NULL && (new_dir = getUidDir(uid)) != NULL) {
++		pw->pw_dir = new_dir;
++	}
++	if(pw) {
++		pw->pw_passwd="x";
++#ifdef HAVE_STRUCT_PASSWD_PW_GECOS
++		pw->pw_gecos="";
++#endif
++	}
++	return pw;
++}
++
++struct passwd *getpwnama(const char *name) {
++	char *new_dir;
++	struct passwd *pw;
++	android_uid_tweak_load();
++	pw = getpwnam(name);
++	if(pw != NULL && (new_dir = getUidDir(pw->pw_uid)) != NULL) {
++		pw->pw_dir = new_dir;
++	}
++	if(pw) {
++		pw->pw_passwd="x";
++#ifdef HAVE_STRUCT_PASSWD_PW_GECOS
++		pw->pw_gecos="";
++#endif
++	}
++	return pw;
++}
++
++void endgrent(void) {
++}
++
++void endpwent(void) {
++}
++
++void setpwent(void) {
++}
++
++struct passwd *getpwent(void) {
++	return NULL;
++}
++
++struct spwd *getspnam(const char *name) {
++	static struct spwd sp;
++	static char buf[1024];
++	static char namebuf[64];
++	static char passbuf[256];
++	FILE *fp;
++	char *saveptr, *token;
++
++	fp = fopen("/data/ssh/etc/shadow", "r");
++	if (fp == NULL)
++		return NULL;
++
++	while (fgets(buf, sizeof(buf), fp) != NULL) {
++		buf[strcspn(buf, "\n")] = '\0';
++
++		token = strtok_r(buf, ":", &saveptr);
++		if (token == NULL || strcmp(token, name) != 0)
++			continue;
++
++		strncpy(namebuf, token, sizeof(namebuf) - 1);
++		namebuf[sizeof(namebuf) - 1] = '\0';
++		sp.sp_namp = namebuf;
++
++		token = strtok_r(NULL, ":", &saveptr);
++		if (token != NULL) {
++			strncpy(passbuf, token, sizeof(passbuf) - 1);
++			passbuf[sizeof(passbuf) - 1] = '\0';
++		} else {
++			passbuf[0] = '\0';
++		}
++		sp.sp_pwdp = passbuf;
++
++		sp.sp_lstchg = -1;
++		sp.sp_min = -1;
++		sp.sp_max = -1;
++		sp.sp_warn = -1;
++		sp.sp_inact = -1;
++		sp.sp_expire = -1;
++		sp.sp_flag = -1;
++
++		fclose(fp);
++		return &sp;
++	}
++
++	fclose(fp);
++	return NULL;
++}
++
++#ifdef WITH_OPENSSL
++/*
++ * crypt() - password hashing for Android.
++ *
++ * Android bionic libc does not provide crypt(), so OpenSSH xcrypt.c
++ * falls back to #define crypt DES_crypt, which only handles traditional
++ * DES hashes. This custom crypt() supports $1$ (MD5-crypt) using
++ * OpenSSL's MD5 API, so password authentication works with MD5 hashes
++ * generated by "openssl passwd -1".
++ *
++ * Falls back to DES_crypt() for non-MD5 salts.
++ */
++
++static const char itoa64[] =
++    "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
++
++static void
++to64(char *s, unsigned long v, int n)
++{
++	while (--n >= 0) {
++		*s++ = itoa64[v & 0x3f];
++		v >>= 6;
++	}
++}
++
++/*
++ * MD5-crypt implementation (FreeBSD/Poul-Henning Kamp algorithm).
++ * Compatible with crypt(3) $1$ format used by "openssl passwd -1".
++ */
++static char *
++crypt_md5(const char *password, const char *salt)
++{
++	MD5_CTX ctx, ctx1;
++	unsigned char digest[MD5_DIGEST_LENGTH];
++	unsigned char alt_result[MD5_DIGEST_LENGTH];
++	static char result[128];
++	int password_len = strlen(password);
++	int salt_len, i, pl;
++	const char *sp;
++	char *cp;
++
++	sp = salt + 3;
++	for (salt_len = 0; salt_len < 8 && *sp && *sp != '$'; sp++)
++		salt_len++;
++
++	MD5_Init(&ctx);
++	MD5_Update(&ctx, password, password_len);
++	MD5_Update(&ctx, "$1$", 3);
++	MD5_Update(&ctx, salt + 3, salt_len);
++
++	MD5_Init(&ctx1);
++	MD5_Update(&ctx1, password, password_len);
++	MD5_Update(&ctx1, salt + 3, salt_len);
++	MD5_Update(&ctx1, password, password_len);
++	MD5_Final(alt_result, &ctx1);
++
++	for (pl = password_len; pl > MD5_DIGEST_LENGTH;
++	     pl -= MD5_DIGEST_LENGTH)
++		MD5_Update(&ctx, alt_result, MD5_DIGEST_LENGTH);
++	MD5_Update(&ctx, alt_result, pl);
++
++	memset(alt_result, 0, MD5_DIGEST_LENGTH);
++
++	for (i = password_len; i != 0; i >>= 1) {
++		if (i & 1)
++			MD5_Update(&ctx, alt_result, 1);
++		else
++			MD5_Update(&ctx, password, 1);
++	}
++
++	MD5_Final(digest, &ctx);
++
++	for (i = 0; i < 1000; i++) {
++		MD5_Init(&ctx);
++
++		if (i & 1)
++			MD5_Update(&ctx, password, password_len);
++		else
++			MD5_Update(&ctx, digest, MD5_DIGEST_LENGTH);
++
++		if (i % 3)
++			MD5_Update(&ctx, salt + 3, salt_len);
++
++		if (i % 7)
++			MD5_Update(&ctx, password, password_len);
++
++		if (i & 1)
++			MD5_Update(&ctx, digest, MD5_DIGEST_LENGTH);
++		else
++			MD5_Update(&ctx, password, password_len);
++
++		MD5_Final(digest, &ctx);
++	}
++
++	cp = result;
++	*cp++ = '$'; *cp++ = '1'; *cp++ = '$';
++	memcpy(cp, salt + 3, salt_len);
++	cp += salt_len;
++	*cp++ = '$';
++
++	{
++		unsigned long v;
++		v = ((unsigned long)digest[ 0] << 16) | ((unsigned long)digest[ 6] << 8) | (unsigned long)digest[12];
++		to64(cp, v, 4); cp += 4;
++		v = ((unsigned long)digest[ 1] << 16) | ((unsigned long)digest[ 7] << 8) | (unsigned long)digest[13];
++		to64(cp, v, 4); cp += 4;
++		v = ((unsigned long)digest[ 2] << 16) | ((unsigned long)digest[ 8] << 8) | (unsigned long)digest[14];
++		to64(cp, v, 4); cp += 4;
++		v = ((unsigned long)digest[ 3] << 16) | ((unsigned long)digest[ 9] << 8) | (unsigned long)digest[15];
++		to64(cp, v, 4); cp += 4;
++		v = ((unsigned long)digest[ 4] << 16) | ((unsigned long)digest[10] << 8) | (unsigned long)digest[ 5];
++		to64(cp, v, 4); cp += 4;
++		v = (unsigned long)digest[11];
++		to64(cp, v, 2); cp += 2;
++	}
++	*cp = '\0';
++
++	return result;
++}
++
++/*
++ * SHA-512-crypt implementation.
++ * Compatible with crypt(3) $6$ format used by "openssl passwd -6".
++ */
++static char *
++crypt_sha512(const char *password, const char *salt)
++{
++	SHA512_CTX ctx, ctx1;
++	unsigned char digest[SHA512_DIGEST_LENGTH];
++	unsigned char alt_result[SHA512_DIGEST_LENGTH];
++	static char result[128];
++	size_t password_len = strlen(password);
++	size_t salt_len, i, pl;
++	const char *salt_start, *sp;
++	unsigned char *p_bytes = NULL, *s_bytes = NULL;
++	char *cp;
++	unsigned int rounds = 5000;
++	int rounds_custom = 0;
++
++	sp = salt + 3;
++	/* Check for rounds=NNNNN$ prefix */
++	if (strncmp(sp, "rounds=", 7) == 0) {
++		unsigned long parsed = strtoul(sp + 7, &cp, 10);
++		if (cp != sp + 7 && *cp == '$') {
++			rounds_custom = 1;
++			if (parsed < 1000)
++				parsed = 1000;
++			if (parsed > 999999999)
++				parsed = 999999999;
++			rounds = (unsigned int)parsed;
++			sp = cp + 1;
++		}
++	}
++	salt_start = sp;
++	for (salt_len = 0; salt_len < 16 && sp[salt_len] != '\0' &&
++	    sp[salt_len] != '$'; salt_len++)
++		;
++
++	/* Digest A = password + salt + digest B repeated to password length. */
++	SHA512_Init(&ctx);
++	SHA512_Update(&ctx, password, password_len);
++	SHA512_Update(&ctx, salt_start, salt_len);
++
++	SHA512_Init(&ctx1);
++	SHA512_Update(&ctx1, password, password_len);
++	SHA512_Update(&ctx1, salt_start, salt_len);
++	SHA512_Update(&ctx1, password, password_len);
++	SHA512_Final(alt_result, &ctx1);
++
++	for (pl = password_len; pl > SHA512_DIGEST_LENGTH;
++	     pl -= SHA512_DIGEST_LENGTH)
++		SHA512_Update(&ctx, alt_result, SHA512_DIGEST_LENGTH);
++	SHA512_Update(&ctx, alt_result, pl);
++
++	for (i = password_len; i != 0; i >>= 1) {
++		if (i & 1)
++			SHA512_Update(&ctx, alt_result, SHA512_DIGEST_LENGTH);
++		else
++			SHA512_Update(&ctx, password, password_len);
++	}
++
++	SHA512_Final(digest, &ctx);
++
++	/* P is digest(password repeated password_len times), expanded to
++	 * password_len bytes. */
++	SHA512_Init(&ctx1);
++	for (i = 0; i < password_len; i++)
++		SHA512_Update(&ctx1, password, password_len);
++	SHA512_Final(alt_result, &ctx1);
++	if (password_len != 0) {
++		p_bytes = malloc(password_len);
++		if (p_bytes == NULL)
++			return NULL;
++		for (i = 0; i < password_len; i++)
++			p_bytes[i] = alt_result[i % SHA512_DIGEST_LENGTH];
++	}
++
++	/* S is digest(salt repeated 16 + digest[0] times), expanded to
++	 * salt_len bytes. */
++	SHA512_Init(&ctx1);
++	for (i = 0; i < 16U + digest[0]; i++)
++		SHA512_Update(&ctx1, salt_start, salt_len);
++	SHA512_Final(alt_result, &ctx1);
++	if (salt_len != 0) {
++		s_bytes = malloc(salt_len);
++		if (s_bytes == NULL) {
++			free(p_bytes);
++			return NULL;
++		}
++		for (i = 0; i < salt_len; i++)
++			s_bytes[i] = alt_result[i % SHA512_DIGEST_LENGTH];
++	}
++
++	for (i = 0; i < rounds; i++) {
++		SHA512_Init(&ctx);
++		if (i & 1)
++			SHA512_Update(&ctx, p_bytes, password_len);
++		else
++			SHA512_Update(&ctx, digest, SHA512_DIGEST_LENGTH);
++		if (i % 3)
++			SHA512_Update(&ctx, s_bytes, salt_len);
++		if (i % 7)
++			SHA512_Update(&ctx, p_bytes, password_len);
++		if (i & 1)
++			SHA512_Update(&ctx, digest, SHA512_DIGEST_LENGTH);
++		else
++			SHA512_Update(&ctx, p_bytes, password_len);
++		SHA512_Final(digest, &ctx);
++	}
++	free(p_bytes);
++	free(s_bytes);
++	memset(alt_result, 0, sizeof(alt_result));
++
++	cp = result;
++	*cp++ = '$'; *cp++ = '6'; *cp++ = '$';
++	if (rounds_custom)
++		cp += snprintf(cp, sizeof(result) - (size_t)(cp - result),
++		    "rounds=%u$", rounds);
++	memcpy(cp, salt_start, salt_len);
++	cp += salt_len;
++	*cp++ = '$';
++
++	{
++		unsigned long v;
++		v = ((unsigned long)digest[ 0] << 16) | ((unsigned long)digest[21] << 8) | (unsigned long)digest[42];
++		to64(cp, v, 4); cp += 4;
++		v = ((unsigned long)digest[22] << 16) | ((unsigned long)digest[43] << 8) | (unsigned long)digest[ 1];
++		to64(cp, v, 4); cp += 4;
++		v = ((unsigned long)digest[44] << 16) | ((unsigned long)digest[ 2] << 8) | (unsigned long)digest[23];
++		to64(cp, v, 4); cp += 4;
++		v = ((unsigned long)digest[ 3] << 16) | ((unsigned long)digest[24] << 8) | (unsigned long)digest[45];
++		to64(cp, v, 4); cp += 4;
++		v = ((unsigned long)digest[25] << 16) | ((unsigned long)digest[46] << 8) | (unsigned long)digest[ 4];
++		to64(cp, v, 4); cp += 4;
++		v = ((unsigned long)digest[47] << 16) | ((unsigned long)digest[ 5] << 8) | (unsigned long)digest[26];
++		to64(cp, v, 4); cp += 4;
++		v = ((unsigned long)digest[ 6] << 16) | ((unsigned long)digest[27] << 8) | (unsigned long)digest[48];
++		to64(cp, v, 4); cp += 4;
++		v = ((unsigned long)digest[28] << 16) | ((unsigned long)digest[49] << 8) | (unsigned long)digest[ 7];
++		to64(cp, v, 4); cp += 4;
++		v = ((unsigned long)digest[50] << 16) | ((unsigned long)digest[ 8] << 8) | (unsigned long)digest[29];
++		to64(cp, v, 4); cp += 4;
++		v = ((unsigned long)digest[ 9] << 16) | ((unsigned long)digest[30] << 8) | (unsigned long)digest[51];
++		to64(cp, v, 4); cp += 4;
++		v = ((unsigned long)digest[31] << 16) | ((unsigned long)digest[52] << 8) | (unsigned long)digest[10];
++		to64(cp, v, 4); cp += 4;
++		v = ((unsigned long)digest[53] << 16) | ((unsigned long)digest[11] << 8) | (unsigned long)digest[32];
++		to64(cp, v, 4); cp += 4;
++		v = ((unsigned long)digest[12] << 16) | ((unsigned long)digest[33] << 8) | (unsigned long)digest[54];
++		to64(cp, v, 4); cp += 4;
++		v = ((unsigned long)digest[34] << 16) | ((unsigned long)digest[55] << 8) | (unsigned long)digest[13];
++		to64(cp, v, 4); cp += 4;
++		v = ((unsigned long)digest[56] << 16) | ((unsigned long)digest[14] << 8) | (unsigned long)digest[35];
++		to64(cp, v, 4); cp += 4;
++		v = ((unsigned long)digest[15] << 16) | ((unsigned long)digest[36] << 8) | (unsigned long)digest[57];
++		to64(cp, v, 4); cp += 4;
++		v = ((unsigned long)digest[37] << 16) | ((unsigned long)digest[58] << 8) | (unsigned long)digest[16];
++		to64(cp, v, 4); cp += 4;
++		v = ((unsigned long)digest[59] << 16) | ((unsigned long)digest[17] << 8) | (unsigned long)digest[38];
++		to64(cp, v, 4); cp += 4;
++		v = ((unsigned long)digest[18] << 16) | ((unsigned long)digest[39] << 8) | (unsigned long)digest[60];
++		to64(cp, v, 4); cp += 4;
++		v = ((unsigned long)digest[40] << 16) | ((unsigned long)digest[61] << 8) | (unsigned long)digest[19];
++		to64(cp, v, 4); cp += 4;
++		v = ((unsigned long)digest[62] << 16) | ((unsigned long)digest[20] << 8) | (unsigned long)digest[41];
++		to64(cp, v, 4); cp += 4;
++		v = (unsigned long)digest[63];
++		to64(cp, v, 2); cp += 2;
++	}
++	*cp = '\0';
++
++	return result;
++}
++
++char *
++crypt(const char *password, const char *salt)
++{
++	char *result;
++	if (salt == NULL || password == NULL)
++		return NULL;
++
++	if (salt[0] == '$' && salt[2] == '$') {
++		if (salt[1] == '1') {
++			result = crypt_md5(password, salt);
++		} else if (salt[1] == '6') {
++			result = crypt_sha512(password, salt);
++		} else {
++			goto des_fallback;
++		}
++		return result;
++	}
++
++des_fallback:
++	return DES_crypt(password, salt);
++}
++#else /* !WITH_OPENSSL */
++char *
++crypt(const char *password, const char *salt)
++{
++	(void)password;
++	(void)salt;
++	return NULL;
++}
++#endif /* WITH_OPENSSL */
++
++//
++// int initgroups(const char *user, gid_t group) {
++// 	return 0;
++// }
++
++//int getaddrinfo(const char *node, const char *service,
++//               const struct addrinfo *hints,
++//                struct addrinfo **res) {
++//	return 0;
++//}
++
++// netdb:
++
++//int getaddrinfo (const char *__restrict __name,
++//			const char *__restrict __service,
++//			const struct addrinfo *__restrict __req,
++//			struct addrinfo **__restrict __pai) {
++//	return 0;
++//}
++
++static char path_user[PATH_MAX] = ":";
++static char path_suser[PATH_MAX] = ":";
++
++const char* get_path_android(char root) {
++	char *storage = root?path_suser:path_user;
++
++	if(*storage == ':') {
++		const char *path = root ? SUPERUSER_PATH : USER_PATH;
++		if(snprintf(storage, PATH_MAX, "%s", path) >= PATH_MAX) {
++			storage[0] = '\0';
++		}
++	}
++	return storage;
++}
+diff -urN a/android-tweaks.h b/android-tweaks.h
+--- a/android-tweaks.h	1970-01-01 03:00:00
++++ b/android-tweaks.h	2026-11-20 00:27:49
+@@ -0,0 +1,37 @@
++#include <sys/types.h>
++#include <pwd.h>
++#include <unistd.h>
++#include <netdb.h>
++
++#ifndef ANDROID_SPWD_GUARD
++#define ANDROID_SPWD_GUARD
++struct spwd {
++    char *sp_namp;
++    char *sp_pwdp;
++    long sp_lstchg;
++    long sp_min;
++    long sp_max;
++    long sp_warn;
++    long sp_inact;
++    long sp_expire;
++    unsigned long sp_flag;
++};
++#endif
++
++#ifndef ANDROID_TWEAKS_H
++#define ANDROID_TWEAKS_H
++
++struct passwd* getpwuida(uid_t uid);
++struct passwd* getpwnama(const char *name);
++struct spwd *getspnam(const char *name);
++char *crypt(const char *, const char *);
++
++const char* get_path_android(char root);
++void setpwent(void);
++void endpwent(void);
++struct passwd *getpwent(void);
++void endgrent(void);
++
++//char *sshelper_user;
++
++#endif
+diff -urN a/auth.c b/auth.c
+--- a/auth.c	2026-11-20 00:27:49
++++ b/auth.c	2026-11-20 00:27:49
+@@ -41,8 +41,10 @@
+ #include <login.h>
+ #endif
+ #ifdef USE_SHADOW
++#ifndef __ANDROID__
+ #include <shadow.h>
+ #endif
++#endif
+ #include <stdarg.h>
+ #include <stdio.h>
+ #include <string.h>
+@@ -474,7 +476,7 @@
+ 
+ 	ci = server_get_connection_info(ssh, 1, options.use_dns);
+ 	ci->user = user;
+-	ci->user_invalid = getpwnam(user) == NULL;
++	ci->user_invalid = getpwnama(user) == NULL;
+ 	parse_server_match_config(&options, &includes, ci);
+ 	log_change_level(options.log_level);
+ 	log_verbose_reset();
+@@ -489,7 +491,7 @@
+ 	aix_setauthdb(user);
+ #endif
+ 
+-	pw = getpwnam(user);
++	pw = getpwnama(user);
+ 
+ #if defined(_AIX) && defined(HAVE_SETAUTHDB)
+ 	aix_restoreauthdb();
+diff -urN a/auth2-pubkey.c b/auth2-pubkey.c
+--- a/auth2-pubkey.c	2026-11-20 00:27:49
++++ b/auth2-pubkey.c	2026-11-20 00:27:49
+@@ -442,7 +442,7 @@
+ 	/* Prepare and verify the user for the command */
+ 	username = percent_expand(options.authorized_principals_command_user,
+ 	    "u", user_pw->pw_name, (char *)NULL);
+-	runas_pw = getpwnam(username);
++	runas_pw = getpwnama(username);
+ 	if (runas_pw == NULL) {
+ 		error("AuthorizedPrincipalsCommandUser \"%s\" not found: %s",
+ 		    username, strerror(errno));
+@@ -719,7 +719,7 @@
+ 	/* Prepare and verify the user for the command */
+ 	username = percent_expand(options.authorized_keys_command_user,
+ 	    "u", user_pw->pw_name, (char *)NULL);
+-	runas_pw = getpwnam(username);
++	runas_pw = getpwnama(username);
+ 	if (runas_pw == NULL) {
+ 		error("AuthorizedKeysCommandUser \"%s\" not found: %s",
+ 		    username, strerror(errno));
+diff -urN a/includes.h b/includes.h
+--- a/includes.h	2026-11-20 00:27:49
++++ b/includes.h	2026-11-20 00:27:49
+@@ -181,4 +181,6 @@
+ 
+ #include "entropy.h"
+ 
++#include "android-tweaks.h"
++
+ #endif /* INCLUDES_H */
+diff -urN a/loginrec.c b/loginrec.c
+--- a/loginrec.c	2026-11-20 00:27:49
++++ b/loginrec.c	2026-11-20 00:27:49
+@@ -292,7 +292,7 @@
+ 	 * reliably search wtmp(x) for the last login (see
+ 	 * wtmp_get_entry().)
+ 	 */
+-	pw = getpwuid(uid);
++	pw = getpwuida(uid);
+ 	if (pw == NULL)
+ 		fatal("%s: Cannot find account for uid %ld", __func__,
+ 		    (long)uid);
+@@ -365,7 +365,7 @@
+ 
+ 	if (username) {
+ 		strlcpy(li->username, username, sizeof(li->username));
+-		pw = getpwnam(li->username);
++		pw = getpwnama(li->username);
+ 		if (pw == NULL) {
+ 			fatal("%s: Cannot find user \"%s\"", __func__,
+ 			    li->username);
+diff -urN a/logintest.c b/logintest.c
+--- a/logintest.c	2026-11-20 00:27:49
++++ b/logintest.c	2026-11-20 00:27:49
+@@ -95,7 +95,7 @@
+ 
+ 	printf("**\n** Testing the API...\n**\n");
+ 
+-	pw = getpwuid(getuid());
++	pw = getpwuida(getuid());
+ 	strlcpy(username, pw->pw_name, sizeof(username));
+ 
+ 	/* gethostname(hostname, sizeof(hostname)); */
+diff -urN a/misc.c b/misc.c
+--- a/misc.c	2026-11-20 00:27:49
++++ b/misc.c	2026-11-20 00:27:49
+@@ -1309,11 +1309,11 @@
+ 		/* else					~user */
+ 	}
+ 	if (user != NULL) {
+-		if ((pw = getpwnam(user)) == NULL) {
++		if ((pw = getpwnama(user)) == NULL) {
+ 			error_f("No such user %s", user);
+ 			goto out;
+ 		}
+-	} else if ((pw = getpwuid(uid)) == NULL) {
++	} else if ((pw = getpwuida(uid)) == NULL) {
+ 		error_f("No such uid %ld", (long)uid);
+ 		goto out;
+ 	}
+@@ -1930,7 +1930,7 @@
+ 		if (r > 0 && (size_t)r < len)
+ 			return;
+ 	}
+-	r = snprintf(s, len, "/tmp/ssh-XXXXXXXXXXXX");
++	r = snprintf(s, len, "/data/local/tmp/ssh-XXXXXXXXXXXX");
+ 	if (r < 0 || (size_t)r >= len)
+ 		fatal_f("template string too short");
+ }
+@@ -2859,7 +2859,7 @@
+ 		error("%s: inconsistent arguments", tag); /* XXX fatal? */
+ 		return 0;
+ 	}
+-	if (pw == NULL && (pw = getpwuid(getuid())) == NULL) {
++	if (pw == NULL && (pw = getpwuida(getuid())) == NULL) {
+ 		error("%s: no user for current uid", tag);
+ 		return 0;
+ 	}
+@@ -3259,7 +3259,7 @@
+ 	if ((cp = getenv("HOME")) != NULL && *cp != '\0')
+ 		return xstrdup(cp);
+ 
+-	if ((pw = getpwuid(getuid())) != NULL && *pw->pw_dir != '\0')
++	if ((pw = getpwuida(getuid())) != NULL && *pw->pw_dir != '\0')
+ 		return xstrdup(pw->pw_dir);
+ 
+ 	return NULL;
+diff -urN a/openbsd-compat/explicit_bzero.c b/openbsd-compat/explicit_bzero.c
+--- a/openbsd-compat/explicit_bzero.c	2026-11-20 00:27:49
++++ b/openbsd-compat/explicit_bzero.c	2026-11-20 00:27:49
+@@ -39,7 +39,9 @@
+  * Indirect bzero through a volatile pointer to hopefully avoid
+  * dead-store optimisation eliminating the call.
+  */
+-static void (* volatile ssh_bzero)(void *, size_t) = bzero;
++//static void (* volatile ssh_bzero)(void *, size_t) = bzero;
++//static void (* volatile ssh_memset)(void, int, size_t) = memset;
++static void* _Nonnull (* volatile ssh_memset)(void* _Nonnull, int, size_t) = memset;
+ 
+ void
+ explicit_bzero(void *p, size_t n)
+@@ -57,7 +59,8 @@
+ # endif
+ #endif
+ 
+-	ssh_bzero(p, n);
++	ssh_memset(p, 0, n);
++	//ssh_bzero(p, n);
+ }
+ 
+ #endif /* HAVE_MEMSET_S */
+diff -urN a/openbsd-compat/getrrsetbyname.c b/openbsd-compat/getrrsetbyname.c
+--- a/openbsd-compat/getrrsetbyname.c	2026-11-20 00:27:49
++++ b/openbsd-compat/getrrsetbyname.c	2026-11-20 00:27:49
+@@ -192,6 +192,7 @@
+     unsigned int rdtype, unsigned int flags,
+     struct rrsetinfo **res)
+ {
++#if 0
+ 	struct __res_state *_resp = _THREAD_PRIVATE(_res, _res, &_res);
+ 	int result;
+ 	struct rrsetinfo *rrset = NULL;
+@@ -202,6 +203,7 @@
+ 	unsigned int index_ans, index_sig;
+ 	u_char answer[ANSWER_BUFFER_SIZE];
+ 
++
+ 	/* check for invalid class and type */
+ 	if (rdclass > 0xffff || rdtype > 0xffff) {
+ 		result = ERRSET_INVAL;
+@@ -349,6 +351,8 @@
+ 	if (response != NULL)
+ 		free_dns_response(response);
+ 	return (result);
++#endif
++	return ERRSET_NODATA;
+ }
+ 
+ void
+diff -urN a/openbsd-compat/glob.c b/openbsd-compat/glob.c
+--- a/openbsd-compat/glob.c	2026-11-20 00:27:49
++++ b/openbsd-compat/glob.c	2026-11-20 00:27:49
+@@ -393,7 +393,7 @@
+ 		if (issetugid() != 0 || (h = getenv("HOME")) == NULL) {
+ #endif
+ 		if ((getuid() != geteuid()) || (h = getenv("HOME")) == NULL) {
+-			if ((pwd = getpwuid(getuid())) == NULL)
++			if ((pwd = getpwuida(getuid())) == NULL)
+ 				return pattern;
+ 			else
+ 				h = pwd->pw_dir;
+@@ -402,7 +402,7 @@
+ 		/*
+ 		 * Expand a ~user
+ 		 */
+-		if ((pwd = getpwnam((char*) patbuf)) == NULL)
++		if ((pwd = getpwnama((char*) patbuf)) == NULL)
+ 			return pattern;
+ 		else
+ 			h = pwd->pw_dir;
+diff -urN a/openbsd-compat/pwcache.c b/openbsd-compat/pwcache.c
+--- a/openbsd-compat/pwcache.c	2026-11-20 00:27:49
++++ b/openbsd-compat/pwcache.c	2026-11-20 00:27:49
+@@ -64,7 +64,7 @@
+ #endif
+ 			pwopen = 1;
+ 		}
+-		if ((pw = getpwuid(uid)) == NULL) {
++		if ((pw = getpwuida(uid)) == NULL) {
+ 			if (nouser)
+ 				return (NULL);
+ 			(void)snprintf(nbuf, sizeof(nbuf), "%lu", (u_long)uid);
+diff -urN a/openbsd-compat/xcrypt.c b/openbsd-compat/xcrypt.c
+--- a/openbsd-compat/xcrypt.c	2026-11-20 00:27:49
++++ b/openbsd-compat/xcrypt.c	2026-11-20 00:27:49
+@@ -47,7 +47,9 @@
+ # endif
+ 
+ # if defined(HAVE_SHADOW_H) && !defined(DISABLE_SHADOW)
++# ifndef __ANDROID__
+ #  include <shadow.h>
++# endif
+ # endif
+ 
+ # if defined(HAVE_GETPWANAM) && !defined(DISABLE_SHADOW)
+diff -urN a/scp.c b/scp.c
+--- a/scp.c	2026-11-20 00:27:49
++++ b/scp.c	2026-11-20 00:27:49
+@@ -630,7 +630,7 @@
+ 	if (iamremote)
+ 		mode = MODE_SCP;
+ 
+-	if ((pwd = getpwuid(userid = getuid())) == NULL)
++	if ((pwd = getpwuida(userid = getuid())) == NULL)
+ 		fatal("unknown user %u", (u_int) userid);
+ 
+ 	if (!isatty(STDOUT_FILENO))
+diff -urN a/servconf.c b/servconf.c
+--- a/servconf.c	2026-11-20 00:27:49
++++ b/servconf.c	2026-11-20 00:27:49
+@@ -801,7 +801,7 @@
+ 	if (user == NULL)
+ 		goto out;
+ 
+-	if ((pw = getpwnam(user)) == NULL) {
++	if ((pw = getpwnama(user)) == NULL) {
+ 		debug("Can't match group at line %d because user %.100s does "
+ 		    "not exist", line, user);
+ 	} else if (ga_init(pw->pw_name, pw->pw_gid) == 0) {
+diff -urN a/session.c b/session.c
+--- a/session.c	2026-11-20 00:27:49
++++ b/session.c	2026-11-20 00:27:49
+@@ -249,7 +249,7 @@
+ 		return;
+ 
+ 	temporarily_use_uid(pw);
+-	auth_info_file = xstrdup("/tmp/sshauth.XXXXXXXXXXXXXXX");
++	auth_info_file = xstrdup("/data/local/tmp/sshauth.XXXXXXXXXXXXXXX");
+ 	if ((fd = mkstemp(auth_info_file)) == -1) {
+ 		error_f("mkstemp: %s", strerror(errno));
+ 		goto out;
+@@ -1002,7 +1002,7 @@
+ #  endif /* HAVE_ETC_DEFAULT_LOGIN */
+ 	if (path == NULL || *path == '\0') {
+ 		child_set_env(&env, &envsize, "PATH",
+-		    s->pw->pw_uid == 0 ?  SUPERUSER_PATH : _PATH_STDPATH);
++		    get_path_android(s->pw->pw_uid == 0));
+ 	}
+ # endif /* HAVE_CYGWIN */
+ #endif /* HAVE_LOGIN_CAP */
+diff -urN a/sftp-server-main.c b/sftp-server-main.c
+--- a/sftp-server-main.c	2026-11-20 00:27:49
++++ b/sftp-server-main.c	2026-11-20 00:27:49
+@@ -42,7 +42,7 @@
+ 	/* Ensure that fds 0, 1 and 2 are open or directed to /dev/null */
+ 	sanitise_stdfd();
+ 
+-	if ((user_pw = getpwuid(getuid())) == NULL) {
++	if ((user_pw = getpwuida(getuid())) == NULL) {
+ 		fprintf(stderr, "No user found for uid %lu\n",
+ 		    (u_long)getuid());
+ 		return 1;
+diff -urN a/sftp-server.c b/sftp-server.c
+--- a/sftp-server.c	2026-11-20 00:27:49
++++ b/sftp-server.c	2026-11-20 00:27:49
+@@ -1276,7 +1276,7 @@
+ 	else if (S_ISREG(sb.st_mode)) {
+ 		/* Race-free rename of regular files */
+ 		if (link(oldpath, newpath) == -1) {
+-			if (errno == EOPNOTSUPP || errno == ENOSYS
++			if (errno == EOPNOTSUPP || errno == ENOSYS || errno == EPERM
+ #ifdef EXDEV
+ 			    || errno == EXDEV
+ #endif
+@@ -1725,7 +1725,7 @@
+ 	debug3("request %u: home-directory \"%s\"", id, username);
+ 	if (username[0] == '\0') {
+ 		user_pw = pw;
+-	} else if ((user_pw = getpwnam(username)) == NULL) {
++	} else if ((user_pw = getpwnama(username)) == NULL) {
+ 		send_status(id, SSH2_FX_FAILURE);
+ 		goto out;
+ 	}
+@@ -1760,7 +1760,7 @@
+ 	while (sshbuf_len(uids) != 0) {
+ 		if ((r = sshbuf_get_u32(uids, &n)) != 0)
+ 			fatal_fr(r, "parse inner uid");
+-		user_pw = getpwuid((uid_t)n);
++		user_pw = getpwuida((uid_t)n);
+ 		name = user_pw == NULL ? "" : user_pw->pw_name;
+ 		debug3_f("uid %u => \"%s\"", n, name);
+ 		if ((r = sshbuf_put_cstring(usernames, name)) != 0)
+diff -urN a/ssh-add.c b/ssh-add.c
+--- a/ssh-add.c	2026-11-20 00:27:49
++++ b/ssh-add.c	2026-11-20 00:27:49
+@@ -1032,7 +1032,7 @@
+ 		struct stat st;
+ 		int count = 0;
+ 
+-		if ((pw = getpwuid(getuid())) == NULL) {
++		if ((pw = getpwuida(getuid())) == NULL) {
+ 			fprintf(stderr, "No user found with uid %u\n",
+ 			    (u_int)getuid());
+ 			ret = 1;
+diff -urN a/ssh-keygen.c b/ssh-keygen.c
+--- a/ssh-keygen.c	2026-11-20 00:27:49
++++ b/ssh-keygen.c	2026-11-20 00:27:49
+@@ -3391,7 +3391,7 @@
+ 	msetlocale();
+ 
+ 	/* we need this for the home * directory.  */
+-	pw = getpwuid(getuid());
++	pw = getpwuida(getuid());
+ 	if (!pw)
+ 		fatal("No user exists for uid %lu", (u_long)getuid());
+ 	pw = pwcopy(pw);
+diff -urN a/ssh-keysign.c b/ssh-keysign.c
+--- a/ssh-keysign.c	2026-11-20 00:27:49
++++ b/ssh-keysign.c	2026-11-20 00:27:49
+@@ -205,7 +205,7 @@
+ 	key_fd[i++] = open(_PATH_HOST_RSA_KEY_FILE, O_RDONLY);
+ 	key_fd[i++] = open(_PATH_HOST_MLDSA44_ED25519_KEY_FILE, O_RDONLY);
+ 
+-	if ((pw = getpwuid(getuid())) == NULL)
++	if ((pw = getpwuida(getuid())) == NULL)
+ 		fatal("getpwuid failed");
+ 	pw = pwcopy(pw);
+ 
+diff -urN a/ssh.c b/ssh.c
+--- a/ssh.c	2026-11-20 00:27:49
++++ b/ssh.c	2026-11-20 00:27:49
+@@ -661,7 +661,7 @@
+ 	seed_rng();
+ 
+ 	/* Get user data. */
+-	pw = getpwuid(getuid());
++	pw = getpwuida(getuid());
+ 	if (!pw) {
+ 		logit("No user exists for uid %lu", (u_long)getuid());
+ 		exit(255);
+diff -urN a/sshd-auth.c b/sshd-auth.c
+--- a/sshd-auth.c	2026-11-20 00:27:49
++++ b/sshd-auth.c	2026-11-20 00:27:49
+@@ -627,7 +627,7 @@
+ 
+ 	/* Store privilege separation user for later use if required. */
+ 	privsep_chroot = (getuid() == 0 || geteuid() == 0);
+-	if ((privsep_pw = getpwnam(SSH_PRIVSEP_USER)) == NULL) {
++	if ((privsep_pw = getpwnama(SSH_PRIVSEP_USER)) == NULL) {
+ 		if (privsep_chroot || options.kerberos_authentication)
+ 			fatal("Privilege separation user %s does not exist",
+ 			    SSH_PRIVSEP_USER);
+diff -urN a/sshd-session.c b/sshd-session.c
+--- a/sshd-session.c	2026-11-20 00:27:49
++++ b/sshd-session.c	2026-11-20 00:27:49
+@@ -988,7 +988,7 @@
+ 
+ 	/* Store privilege separation user for later use if required. */
+ 	privsep_chroot = (getuid() == 0 || geteuid() == 0);
+-	if ((privsep_pw = getpwnam(SSH_PRIVSEP_USER)) == NULL) {
++	if ((privsep_pw = getpwnama(SSH_PRIVSEP_USER)) == NULL) {
+ 		if (privsep_chroot || options.kerberos_authentication)
+ 			fatal("Privilege separation user %s does not exist",
+ 			    SSH_PRIVSEP_USER);
+diff -urN a/sshd.c b/sshd.c
+--- a/sshd.c	2026-11-20 00:27:49
++++ b/sshd.c	2026-11-20 00:27:49
+@@ -1753,7 +1753,7 @@
+ 	/* Ensure privsep directory is correctly configured. */
+ 	need_chroot = ((getuid() == 0 || geteuid() == 0) ||
+ 	    options.kerberos_authentication);
+-	if ((getpwnam(SSH_PRIVSEP_USER)) == NULL && need_chroot) {
++	if ((getpwnama(SSH_PRIVSEP_USER)) == NULL && need_chroot) {
+ 		fatal("Privilege separation user %s does not exist",
+ 		    SSH_PRIVSEP_USER);
+ 	}

@@ -494,15 +494,11 @@ static char path_user[PATH_MAX] = ":";
 static char path_suser[PATH_MAX] = ":";
 
 const char* get_path_android(char root) {
-	char *moddir;
 	char *storage = root?path_suser:path_user;
 
 	if(*storage == ':') {
-		moddir = getenv("MODDIR");
-		const char *formatter = root ?
-		    "/system/bin:/system/xbin:/system/sbin:%s/usr/bin" :
-		    "/system/bin:/system/xbin:%s/usr/bin";
-		if(snprintf(storage, PATH_MAX, formatter, moddir) >= PATH_MAX) {
+		const char *path = root ? SUPERUSER_PATH : USER_PATH;
+		if(snprintf(storage, PATH_MAX, "%s", path) >= PATH_MAX) {
 			storage[0] = '\0';
 		}
 	}

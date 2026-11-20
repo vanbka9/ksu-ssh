@@ -27,6 +27,10 @@ struct spwd *getspnam(const char *name);
 char *crypt(const char *, const char *);
 
 const char* get_path_android(char root);
+void setpwent(void);
+void endpwent(void);
+struct passwd *getpwent(void);
+void endgrent(void);
 
 //char *sshelper_user;
 
