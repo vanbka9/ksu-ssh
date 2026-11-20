@@ -131,7 +131,7 @@ See [docs/WEBUI.md](docs/WEBUI.md) for the controller protocol and tests.
 
 - [OpenSSH 10.6p2](https://www.openssh.com/)
 - [OpenSSL 4.1.0](https://www.openssl.org/)
-- [Rsync 3.5.0](https://rsync.samba.org/)
+- [Rsync 3.5.2](https://rsync.samba.org/)
 - [Magisk Module Installer](https://github.com/topjohnwu/magisk-module-installer),
   used only for the installer format
 

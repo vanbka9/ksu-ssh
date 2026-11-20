@@ -1,5 +1,5 @@
 $(eval $(call start_package))
-RSYNC?=rsync-3.5.0
+RSYNC?=rsync-3.5.2
 
 PACKAGE:=rsync
 
@@ -20,6 +20,7 @@ $(BUILD_DIR)/$(PACKAGE)/stamp.configured: $(SRC_DIR)/$(PACKAGE)/stamp.prepared $
 	  LD="$(LD)" CC="$(CC)" CFLAGS="$(CFLAGS)" CPPFLAGS="$(CFLAGS)"     \
 	  --build x86_64-pc-linux-gnu --host $(CROSS)                       \
 	  --disable-simd --disable-xxhash --disable-zstd --disable-lz4      \
+	  --disable-idn                                                    \
 	  CFLAGS="$(CFLAGS)" CPPFLAGS="$(CFLAGS)" LDFLAGS="$(LDFLAGS)"
 	$(make-configured-stamp)
 

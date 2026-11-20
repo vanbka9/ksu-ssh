@@ -4,6 +4,7 @@
 
 - Update OpenSSH to 10.6p2.
 - Update OpenSSL to 4.1.0.
+- Update Rsync to 3.5.2.
 - Add a KernelSU and APatch WebUI for service control, authorized keys,
   common settings, and validated `sshd_config` editing.
 - Isolate SSH terminals with a private `devpts` instance.
