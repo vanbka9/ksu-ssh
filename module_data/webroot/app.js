@@ -287,6 +287,27 @@ $("#port-dialog").addEventListener("close", async () => {
 document.querySelectorAll(".nav-item").forEach((item) => {
   item.addEventListener("click", () => showPage(item.dataset.target));
 });
+// The manager does not resize the WebView when the keyboard opens, so the
+// editor shrinks on focus. Keep the caret line inside the shrunken editor.
+function ensureCaretVisible() {
+  const editor = $("#config-editor");
+  const lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 19;
+  const line = editor.value.slice(0, editor.selectionStart).split("\n").length - 1;
+  const top = line * lineHeight;
+  const margin = lineHeight * 2;
+  const viewportTop = editor.scrollTop;
+  const viewportBottom = viewportTop + editor.clientHeight;
+  if (top < viewportTop + margin) editor.scrollTop = Math.max(0, top - margin);
+  else if (top + lineHeight > viewportBottom - margin) {
+    editor.scrollTop = top - editor.clientHeight + lineHeight + margin;
+  }
+}
+$("#config-editor").addEventListener("focus", () => {
+  requestAnimationFrame(() => requestAnimationFrame(ensureCaretVisible));
+});
+$("#config-editor").addEventListener("click", () => requestAnimationFrame(ensureCaretVisible));
+$("#config-editor").addEventListener("input", ensureCaretVisible);
+
 $("#save-config").addEventListener("click", async () => {
   const button = $("#save-config");
   button.disabled = true;

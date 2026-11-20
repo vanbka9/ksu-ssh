@@ -111,7 +111,8 @@ h2 { margin: 24px 4px 8px; color: var(--accent); font-size: 14px; font-weight: 6
 .editor-label { margin: 0 4px 8px; color: var(--muted); font-size: 13px; }
 textarea, dialog input { width: 100%; border: 1px solid var(--line); border-radius: 12px; outline: none; background: var(--card); color: var(--text); }
 textarea:focus, dialog input:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-#config-editor { height: calc(100vh - 250px); min-height: 240px; padding: 12px; resize: vertical; font: 12px/1.6 ui-monospace, "Roboto Mono", "SF Mono", Menlo, monospace; white-space: pre; }
+#config-editor { height: calc(100vh - 250px); height: calc(100dvh - 250px); min-height: 120px; padding: 12px; resize: none; font: 12px/1.6 ui-monospace, "Roboto Mono", "SF Mono", Menlo, monospace; white-space: pre; }
+#config-editor:focus { height: 34vh; height: 34dvh; }
 
 dialog { width: min(calc(100% - 32px), 440px); border: 0; border-radius: 28px; padding: 24px; background: var(--card); color: var(--text); }
 dialog::backdrop { background: rgba(0, 0, 0, .4); }
