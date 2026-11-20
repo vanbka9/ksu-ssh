@@ -1,11 +1,11 @@
 $(eval $(call start_package))
-OPENSSL?=openssl-3.6.4
+OPENSSL?=openssl-4.1.0
 
 PACKAGE:=openssl
 
 ARCHIVE_NAME:=$(OPENSSL).tar.gz
 DOWNLOAD_URL:=https://www.openssl.org/source/$(ARCHIVE_NAME)
-LIBCRYPTO_VERSION:=3
+LIBCRYPTO_VERSION:=4
 
 PACKAGE_INSTALLED_FILES:=$(BUILD_DIR)/usr/lib/libcrypto.so \
                           $(BUILD_DIR)/usr/lib/libssl.so    \
