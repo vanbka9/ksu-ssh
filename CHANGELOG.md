@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Treat vendor scheduler cgroups as outside the manager, so a healthy daemon
+  no longer looks unverified.
 - Add a KernelSU and APatch WebUI for service control, authorized keys,
   common settings, and validated `sshd_config` editing.
 - Isolate SSH terminals with a private `devpts` instance.

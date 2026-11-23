@@ -275,9 +275,11 @@ start_sshd() {
 service_app_bound() {
 	membership=$(cat "$PROC_DIR/$running_pid/cgroup" 2>/dev/null) || { printf unknown; return; }
 	[ -n "$membership" ] || { printf unknown; return; }
+	# Only an app or UID group ties the daemon to the manager's lifetime.
+	# Scheduler groups such as top-app, and vendor named groups, do not.
 	if printf '%s\n' "$membership" | grep -Eq '^[^:]*:[^:]*:/(apps|uid_[0-9]+)(/|$)'; then
 		printf 1
-	elif printf '%s\n' "$membership" | awk -F: 'NF != 3 || $3 !~ /^\/(system)?$/ { bad=1 } END { exit bad }'; then
+	elif printf '%s\n' "$membership" | awk -F: 'NF != 3 || $3 !~ /^\// { bad=1 } END { exit bad }'; then
 		printf 0
 	else
 		printf unknown

@@ -142,6 +142,12 @@ printf '%s\n' "$state" | grep -q '^app-bound	1$'
 printf '0::/\n' > "$proc/$service_pid/cgroup"
 state=$(run state)
 printf '%s\n' "$state" | grep -q '^app-bound	0$'
+printf '3:cpuset:/top-app\n2:cpu:/top-app\n1:blkio:/\n0::/\n' > "$proc/$service_pid/cgroup"
+state=$(run state)
+printf '%s\n' "$state" | grep -q '^app-bound	0$'
+printf 'garbage\n' > "$proc/$service_pid/cgroup"
+state=$(run state)
+printf '%s\n' "$state" | grep -q '^app-bound	unknown$'
 printf '4:memory:/uid_10293/pid_4000\n0::/\n' > "$proc/$service_pid/cgroup"
 state=$(run state)
 printf '%s\n' "$state" | grep -q '^app-bound	1$'

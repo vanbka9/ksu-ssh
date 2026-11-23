@@ -56,7 +56,8 @@ and APatch `su` leave those cgroups. Without `su`, startup runs directly.
 `app-bound` describes the running daemon's cgroup membership:
 
 - `1`: an app or UID group. The page warns that SSH stops with the manager.
-- `0`: only root or `/system` groups were found.
+- `0`: no app or UID group was found. Scheduler groups such as `top-app` and
+  vendor named groups count as safe.
 - `unknown`: unreadable or unrecognized membership. The page shows a warning.
 
 Every start must use
