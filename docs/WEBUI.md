@@ -28,7 +28,7 @@ text encoded as base64:
 ```text
 state\trunning|stopped
 port\tPORT
-address\tIPV4_OR_EMPTY
+addresses\tBASE64
 app-bound\t0|1|unknown
 key\tBASE64_PUBLIC_KEY\tBASE64_SSH_KEYGEN_OUTPUT
 autostart\t0|1
@@ -46,8 +46,17 @@ Failures print an error to stderr and exit nonzero.
 It checks that the PID exists and its executable matches the installed sshd.
 `opensshd.init` has no status action.
 
-`address` is the default route's source IPv4 address, falling back to the first
-non-loopback IPv4 address. It is empty without a network address.
+`addresses` decodes to one `iface<TAB>ip` line per reachable IPv4 address,
+most reachable first: LAN-like interfaces (`wlan`, `swlan`, `ap`, `eth`,
+`usb`, `rndis`, `ncm`), then anything else, then tunnels (`tun`, `tap`,
+`ppp`, `wg`, `ipsec`). Loopback is skipped, and so are mobile data (`rmnet`,
+`ccmni`, `pdp`, `seth`) and CLAT (`v4-`, `clat`): no other device can open a
+connection to them. The
+first entry is selected by default. The Connect card picks an interface and
+Shell or Root, then builds one `ssh` command to copy. Root is offered only
+when root login is enabled. The WebUI shows the interface name next to the
+address, so a VPN address reads as `tun1` instead of passing for a LAN one.
+The list is empty without a network address.
 
 Some manager WebUI shells stay in the app's cgroup, so Android can kill their
 children when the app closes. Start and restart use `su -c` because KernelSU
@@ -81,8 +90,13 @@ the private `devpts` instance.
 | Root: Key | `root-login keys` | `PermitRootLogin prohibit-password` |
 | Root: Key or password | `root-login password` | `PermitRootLogin yes` |
 
-Root passwords require password sign-in. Port and sign-in changes take effect
+Root passwords require password sign-in. When root login is off, the Connect
+card keeps Root greyed out; tapping it offers Key only or Key and password,
+and the change needs an SSH restart. Port and sign-in changes take effect
 after SSH restarts. Start on boot changes take effect immediately.
+If `sshd_config` is edited by hand so that `PermitRootLogin yes` meets
+`PasswordAuthentication no`, the page falls back to root key login when it loads
+the settings.
 
 `internal/colors.css` supplies KernelSU's Material You colors. Missing colors
 fall back to the page's light and dark themes.
@@ -93,9 +107,6 @@ Writes hold a controller lock. The page also queues its writes to avoid lost
 updates.
 
 Keys are validated with `ssh-keygen -lf`. Each request accepts one public key.
-Duplicates are rejected even when the comment differs. Deletion matches the
-whole line. Writes use a temporary file and atomic rename, then restore mode
-`0600` and the account's ownership.
 
 Config saves decode beside `sshd_config` and run `sshd -t -f CANDIDATE`.
 Validation failure leaves the live file unchanged. Successful saves back up

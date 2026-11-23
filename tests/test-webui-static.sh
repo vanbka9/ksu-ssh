@@ -16,7 +16,9 @@ grep -Fq 'chmod 755 /data/adb/ssh/bin/ksu-ssh-webui' "$root/module_data/customiz
 grep -Fq 'aria-label=' "$webroot/index.html"
 grep -Fq 'Password sign-in' "$webroot/index.html"
 grep -Fq 'Key or password' "$webroot/index.html"
-grep -Fq 'Turn on password sign-in to allow root passwords' "$webroot/app.js"
+grep -Fq 'Turn on Password Sign-in?' "$webroot/app.js"
+grep -Fq 'id="confirm-dialog"' "$webroot/index.html"
+grep -Fq 'id="connect-command"' "$webroot/index.html"
 grep -Fq 'prefers-color-scheme: dark' "$webroot/style.css"
 grep -Fq 'prefers-reduced-motion: reduce' "$webroot/style.css"
 

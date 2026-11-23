@@ -60,12 +60,14 @@ The SSH page has these settings:
 | --- | --- |
 | Start on boot | Starts SSH after boot |
 | Port | Listening port, 1 through 65535 |
-| Password sign-in | Allows shell passwords, and root passwords when enabled below |
+| Password sign-in | Allows shell passwords, and root passwords when Root: Key or password is selected |
 | Root: Off | Blocks root login |
 | Root: Key | Allows root login with a key |
 | Root: Key or password | Allows root login with either. Requires password sign-in |
 
-Shell key login stays enabled. Restart SSH to apply port and sign-in changes.
+Shell key login stays enabled. Turning password sign-in off falls back to root
+key login, and choosing **Root: Key or password** while it is off offers to turn
+password sign-in on. Restart SSH to apply port and sign-in changes.
 
 ## Files
 

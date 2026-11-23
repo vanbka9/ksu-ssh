@@ -24,11 +24,27 @@
             <button id="service-toggle" class="primary" type="button" hidden>Start</button>
           </div>
         </div>
-        <button id="address-row" class="address" type="button" hidden>
-          <code id="address-command"></code>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6.5A2.5 2.5 0 0 0 13.5 4h-7A2.5 2.5 0 0 0 4 6.5v7A2.5 2.5 0 0 0 6.5 16H8"/></svg>
-          <span class="sr-only">Copy</span>
-        </button>
+      </section>
+
+      <section aria-labelledby="connect-heading">
+        <h2 id="connect-heading">Connect</h2>
+        <div class="group">
+          <div class="row stacked">
+            <span id="connect-user-label" class="row-text">Sign in as</span>
+            <div class="segmented" role="radiogroup" aria-labelledby="connect-user-label">
+              <label><input id="connect-shell" type="radio" name="connect-user" value="shell"><span>Shell</span></label>
+              <label id="connect-root-option"><input id="connect-root" type="radio" name="connect-user" value="root"><span>Root</span></label>
+            </div>
+          </div>
+          <p id="connect-hint" class="connect-hint" hidden></p>
+          <p id="interfaces-caption" class="group-caption">Interfaces</p>
+          <div id="address-list" class="address-list" role="group" aria-labelledby="interfaces-caption"></div>
+          <p id="command-caption" class="group-caption">Command</p>
+          <button id="copy-command" class="connect-command" type="button" aria-label="Copy connection command">
+            <code id="connect-command"></code>
+            <span class="copy-label">Copy</span>
+          </button>
+        </div>
       </section>
 
       <section aria-labelledby="server-heading">
@@ -50,20 +66,19 @@
         <h2 id="signin-heading">Sign-in</h2>
         <div class="group">
           <label class="row">
-            <span class="row-text">Password sign-in<small>For shell, and for root when allowed below</small></span>
+            <span class="row-text">Password sign-in<small>Allows passwords for shell and, with Root: Key or password, for root.</small></span>
             <input id="password-auth" class="switch" type="checkbox">
           </label>
           <div class="row stacked">
             <span id="root-login-label" class="row-text">Root</span>
-            <div class="segmented" role="radiogroup" aria-labelledby="root-login-label">
+            <div class="segmented three" role="radiogroup" aria-labelledby="root-login-label">
               <label><input id="root-off" type="radio" name="root-login" value="disabled"><span>Off</span></label>
               <label><input id="root-keys" type="radio" name="root-login" value="keys"><span>Key</span></label>
               <label><input id="root-password" type="radio" name="root-login" value="password"><span>Key or password</span></label>
             </div>
-            <small id="root-password-help" hidden></small>
           </div>
         </div>
-        <p class="footnote">Shell can always sign in with a key. Set passwords from a root terminal with <code>passwd shell</code> and <code>passwd root</code>.</p>
+        <p class="footnote">Shell keys always work; root access follows the Root setting. Set a password from a root terminal with <code>passwd shell</code> or <code>passwd root</code>.</p>
       </section>
     </div>
 
@@ -115,6 +130,26 @@
       <input id="port-input" type="number" min="1" max="65535" inputmode="numeric">
       <p id="port-error" class="form-error" aria-live="polite"></p>
       <div class="dialog-actions"><button value="cancel" class="text">Cancel</button><button id="confirm-port" value="default" class="primary">Save</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="confirm-dialog" aria-labelledby="confirm-title">
+    <form method="dialog">
+      <h2 id="confirm-title"></h2>
+      <p id="confirm-text" class="dialog-text"></p>
+      <div class="dialog-actions"><button value="cancel" class="text">Cancel</button><button id="confirm-action" value="default" class="primary">Continue</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="root-dialog" aria-labelledby="root-dialog-title">
+    <form method="dialog">
+      <h2 id="root-dialog-title">Enable root login?</h2>
+      <p class="dialog-text">Root login is off. Choose how root may sign in. Existing sessions stay connected; restart or start SSH to apply.</p>
+      <div class="dialog-actions column">
+        <button value="keys" class="tonal wide">Key only</button>
+        <button value="password" class="tonal wide">Key + password</button>
+        <button value="cancel" class="text">Cancel</button>
+      </div>
     </form>
   </dialog>
 

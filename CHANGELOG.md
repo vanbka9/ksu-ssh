@@ -6,6 +6,20 @@
   no longer looks unverified.
 - Add a KernelSU and APatch WebUI for service control, authorized keys,
   common settings, and validated `sshd_config` editing.
+- List the IPv4 interfaces other devices can reach, with their names, in the
+  WebUI SSH commands. Mobile data is hidden, and a VPN tunnel address no
+  longer passes for the LAN one.
+- Replace the `state` `address` field with `addresses`; scripts that read the
+  old field must switch to the new one.
+- Offer to turn password sign-in on when root passwords are chosen, and fall
+  back to root key login when passwords are turned off.
+- Keep the Root option visible in the Connect card when root login is off;
+  enabling it asks for key-only or key and password login.
+- Confirm key removal and password enabling in styled dialogs.
+- Fall back to root key login when a hand edited config enables root passwords
+  while password sign-in is off.
+- Choose the interface and the Shell or Root account for the connection
+  command; the WebUI builds and copies one command.
 - Isolate SSH terminals with a private `devpts` instance.
 - Start SSH in the primary mount namespace so sessions can reach internal
   storage at `/sdcard` and `/storage/emulated/0`.

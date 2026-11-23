@@ -310,14 +310,28 @@ service_running() {
 	[ "$(readlink "$PROC_DIR/$running_pid/exe" 2>/dev/null)" = "$(readlink -f "$SSHD_BIN")" ]
 }
 
-local_address() {
-	address=$("$IP_BIN" -4 route get 1.1.1.1 2>/dev/null |
-		awk '{ for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit } }') || true
-	if [ -z "$address" ]; then
-		address=$("$IP_BIN" -4 addr show 2>/dev/null |
-			awk '$1 == "inet" { split($2, parts, "/"); if (parts[1] !~ /^127\./) { print parts[1]; exit } }') || true
-	fi
-	printf '%s' "$address"
+# Every reachable IPv4 interface address as "iface<TAB>ip": LAN-like
+# interfaces first, then anything else, then tunnels. Mobile data and CLAT are
+# skipped because no other device can open a connection to them. The name stays
+# next to the address in the WebUI, so a VPN address reads as tun1 instead of
+# passing for a LAN one.
+local_addresses() {
+	"$IP_BIN" -4 addr show 2>/dev/null | awk '
+		/^[0-9]+: / { name = $2; sub(/:$/, "", name); sub(/@.*/, "", name); next }
+		$1 != "inet" { next }
+		{
+			split($2, parts, "/")
+			if (name == "lo" || name ~ /^(rmnet|ccmni|pdp|seth|v4-|clat|dummy)/)
+				next
+			rank = 2
+			if (name ~ /^(wlan|swlan|ap[0-9]|eth|usb|rndis|ncm)/)
+				rank = 1
+			if (name ~ /^(tun|tap|ppp|wg|ipsec)/)
+				rank = 3
+			ranked[rank] = ranked[rank] name "\t" parts[1] "\n"
+		}
+		END { for (rank = 1; rank <= 3; rank++) printf "%s", ranked[rank] }
+	'
 }
 
 command=${1:-}
@@ -329,7 +343,8 @@ case "$command" in
 			state=running
 			app_bound=$(service_app_bound)
 		fi
-		printf 'state\t%s\nport\t%s\naddress\t%s\napp-bound\t%s\n' "$state" "$(config_value Port 22)" "$(local_address)" "$app_bound"
+		addresses=$(printf '%s' "$(local_addresses)" | "$OPENSSL_BIN" enc -base64 -A) || addresses=
+		printf 'state\t%s\nport\t%s\naddresses\t%s\napp-bound\t%s\n' "$state" "$(config_value Port 22)" "$addresses" "$app_bound"
 		;;
 	service)
 		[ "$#" -eq 2 ] || fail "usage: service start|stop|restart"

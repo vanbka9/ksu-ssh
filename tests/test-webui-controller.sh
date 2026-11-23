@@ -54,14 +54,28 @@ cat > "$bin/su" <<EOF
 echo "su \$2" >> "$log"
 exec sh -c "\$2"
 EOF
-cat > "$bin/ip" <<'EOF'
+cat > "$bin/ip" <<EOF
 #!/bin/sh
-case "$*" in
-    "-4 route get 1.1.1.1") [ -n "${SSH_TEST_NO_ROUTE:-}" ] || echo "1.1.1.1 via 192.168.1.1 dev wlan0 src 192.168.1.42 uid 0" ;;
-    "-4 addr show") printf '    inet 127.0.0.1/8 scope host lo\n    inet 10.0.0.7/24 brd 10.0.0.255 scope global wlan0\n' ;;
+case "\$*" in
+    "-4 addr show") cat '$tmp/ip-addr' ;;
 esac
 EOF
 chmod 755 "$bin/sshd" "$bin/private-devpts" "$bin/su" "$bin/ip" "$module/opensshd.init"
+
+lo_v4='1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536\n    inet 127.0.0.1/8 scope host lo\n'
+wlan_v4='40: wlan2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500\n    inet 192.168.1.42/24 brd 192.168.1.255 scope global wlan2\n'
+tun_v4='39: tun1: <POINTOPOINT,UP,LOWER_UP> mtu 1280\n    inet 100.64.13.131/32 scope global tun1\n'
+cell_v4='18: rmnet_data2@rmnet_ipa0: <UP,LOWER_UP> mtu 1500\n    inet 10.246.192.35/29 scope global rmnet_data2\n'
+clat_v4='41: v4-rmnet_data0: <UP,LOWER_UP> mtu 1500\n    inet 192.0.0.4/29 scope global v4-rmnet_data0\n'
+
+network() {
+    printf '%b' "$1" > "$tmp/ip-addr"
+}
+
+address_list() {
+    printf '%s' "$(printf '%s\n' "$1" | awk -F'\t' '$1 == "addresses" { print $2 }')" |
+        openssl enc -d -base64 -A
+}
 
 real_readlink=$(command -v readlink)
 cat > "$bin/readlink" <<EOF
@@ -87,7 +101,6 @@ run() {
     SSH_IP_BIN=$bin/ip \
     SSH_SU_BIN=${SSH_SU_BIN:-$bin/su} \
     SSH_PROC_DIR=$proc \
-    SSH_TEST_NO_ROUTE=${SSH_TEST_NO_ROUTE:-} \
     SSH_ROOT_UID=$(id -u) SSH_ROOT_GID=$(id -g) \
     SSH_SHELL_UID=$(id -u) SSH_SHELL_GID=$(id -g) \
     SSH_TEST_VALIDATE_MARKER=${SSH_TEST_VALIDATE_MARKER:-} \
@@ -122,11 +135,16 @@ second=$(cat "$secondbase.pub")
 second_encoded=$(encode "$second")
 
 service_pid=
+network "$lo_v4$cell_v4$clat_v4$wlan_v4$tun_v4"
 state=$(run state)
 printf '%s\n' "$state" | grep -q '^state	stopped$'
-printf '%s\n' "$state" | grep -q '^address	192.168.1.42$'
-state=$(SSH_TEST_NO_ROUTE=1 run state)
-printf '%s\n' "$state" | grep -q '^address	10.0.0.7$'
+[ "$(address_list "$state")" = "$(printf 'wlan2\t192.168.1.42\ntun1\t100.64.13.131')" ]
+network "$lo_v4$tun_v4"
+state=$(run state)
+[ "$(address_list "$state")" = "$(printf 'tun1\t100.64.13.131')" ]
+network "$lo_v4"
+state=$(run state)
+[ "$(address_list "$state")" = "" ]
 sleep 30 &
 service_pid=$!
 printf '%s\n' "$service_pid" > "$data/sshd.pid"
